@@ -36,15 +36,15 @@
  ********************************************************/
 team_t team = {
   /* Team name */
-  "",
+  "Team Awesome",
   /* First member's full name */
-  "",
+  "Nathan Bellowe",
   /* First member's email address */
-  "",
+  "Nathan.Bellowe@colorado.edu",
   /* Second member's full name (leave blank if none) */
-  "",
+  "Sarah Niemeyer",
   /* Second member's email address (leave blank if none) */
-  ""
+  "Sarah.Niemeyer@colorado.edu"
 };
 
 /////////////////////////////////////////////////////////////////////////////
@@ -141,6 +141,14 @@ int mm_init(void)
   // You need to provide this
   //
   return 0;
+  //
+  // Initialize a pointer to the heap with mem_sbrk(4*W_SIZE)
+  // Put a byte of padding there.
+  // Put the Prologue header one word after the head
+  // Put the Prologue footer one word after that.
+  // Put the epilogue header last (no epilogue footer)
+  //
+  // extendheap!
 }
 
 
@@ -153,6 +161,10 @@ static void *extend_heap(size_t words)
   // You need to provide this
   //
   return NULL;
+  //Extend heap by words (check first to make sure multiple of two)
+  //Use mem_sbrk(desired_size) to get pointer to something.
+  //Put prologue & epilogue
+  //Coalesce.
 }
 
 
@@ -164,6 +176,8 @@ static void *extend_heap(size_t words)
 static void *find_fit(size_t asize)
 {
   return NULL; /* no fit */
+  //go through from start of heap to end of heap, end when find
+  //unallocated block of size >= asize
 }
 
 // 
@@ -174,6 +188,7 @@ void mm_free(void *bp)
   //
   // You need to provide this
   //
+  //put a new footer and ptr without allocated bits at hdrp and ftrp
 }
 
 //
@@ -182,7 +197,13 @@ void mm_free(void *bp)
 static void *coalesce(void *bp) 
 {
   return bp;
+  //get the last previous and next blocks.
+  //If both are allocated do nothing.
+  //Iff next is unallocated, change header of current and footer of next,
+  //Iff next is unallocated change header of prev and footer of current to size of current block + prev block 
+  //Iff both, change header of prev, footer of next
 }
+
 
 //
 // mm_malloc - Allocate a block with at least size bytes of payload 
@@ -193,6 +214,9 @@ void *mm_malloc(size_t size)
   // You need to provide this
   //
   return NULL;
+  //adjust size to be aligned plus + size of the header/ftr (SIZE_T_SIZE)
+  //find fit for size, placing it if found.
+  //If not found, extendheap to be bigger, then place.
 } 
 
 //
@@ -204,6 +228,8 @@ void *mm_malloc(size_t size)
 //
 static void place(void *bp, size_t asize)
 {
+  //if the block at bp is 'too big' split it into two blocks, assign the extra to be unallocated.
+  //otherwise, just adjust bp's header and footer
 }
 
 
@@ -240,13 +266,13 @@ void mm_checkheap(int verbose)
   // and provide your own mm_checkheap
   //
   void *bp = heap_listp;
-  
+
   if (verbose) {
     printf("Heap (%p):\n", heap_listp);
   }
 
   if ((GET_SIZE(HDRP(heap_listp)) != DSIZE) || !GET_ALLOC(HDRP(heap_listp))) {
-	printf("Bad prologue header\n");
+    printf("Bad prologue header\n");
   }
   checkblock(heap_listp);
 
@@ -256,7 +282,7 @@ void mm_checkheap(int verbose)
     }
     checkblock(bp);
   }
-     
+
   if (verbose) {
     printblock(bp);
   }
@@ -274,16 +300,16 @@ static void printblock(void *bp)
   halloc = GET_ALLOC(HDRP(bp));  
   fsize = GET_SIZE(FTRP(bp));
   falloc = GET_ALLOC(FTRP(bp));  
-    
+
   if (hsize == 0) {
     printf("%p: EOL\n", bp);
     return;
   }
 
   printf("%p: header: [%d:%c] footer: [%d:%c]\n",
-	 bp, 
-	 (int) hsize, (halloc ? 'a' : 'f'), 
-	 (int) fsize, (falloc ? 'a' : 'f')); 
+    bp, 
+    (int) hsize, (halloc ? 'a' : 'f'), 
+    (int) fsize, (falloc ? 'a' : 'f')); 
 }
 
 static void checkblock(void *bp) 
