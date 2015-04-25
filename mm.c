@@ -122,6 +122,8 @@ static inline void* PREV_BLKP(void *bp){
 
 static char *heap_listp;  /* pointer to first block */
 
+static char* rp;
+
 //
 // function prototypes for internal helper routines
 //
@@ -163,6 +165,8 @@ int mm_init(void)
 
   heap_listp += (2*WSIZE);
 
+  rp = heap_listp;
+
   //extend the heap!
   extend_heap(CHUNKSIZE/WSIZE);
   return 0;
@@ -186,11 +190,12 @@ static void *extend_heap(size_t words)
 
   //Use mem_sbrk(desired_size) to get pointer to something.
   char* bptr = mem_sbrk(words);
+  size_t headfoot = PACK(words, 0);
 
   //make block header
-  PUT(HDRP(bptr), PACK(words, 0));
+  PUT(HDRP(bptr), headfoot);
   //make block footer
-  PUT(FTRP(bptr), PACK(words, 0));
+  PUT(FTRP(bptr), headfoot);
   //make epilogue
   PUT(HDRP(NEXT_BLKP(bptr)), PACK(0, 1));
   //coalesce
@@ -205,13 +210,26 @@ static void *extend_heap(size_t words)
 //
 static void *find_fit(size_t asize)
 {
-  char* roverptr;
+  char* startpoint = rp;
   //go through from start of heap to end of heap, end when find
   //unallocated block of size >= asize
-  for(roverptr = heap_listp; GET_SIZE(HDRP(roverptr)) > 0; roverptr = NEXT_BLKP(roverptr))
+  for(; GET_SIZE(HDRP(rp)) > 0; rp = NEXT_BLKP(rp))
   {
-    if( (GET_SIZE(HDRP(roverptr)) >= asize) && !GET_ALLOC(HDRP(roverptr)))
-      return roverptr;
+    size_t header =GET(HDRP(rp));
+    size_t size = header & ~7;
+    char alloc = header & 1;
+    if( size >= asize && !alloc)
+      return rp;  
+  }
+  rp = heap_listp;
+  for(; rp < startpoint; rp = NEXT_BLKP(rp))
+  {
+    size_t header =GET(HDRP(rp));
+    size_t size = header & ~7;
+    char alloc = header & 1;
+    if( size >= asize && !alloc)
+      return rp;  
+ 
   }
   return NULL; /* no fit */
 
@@ -260,12 +278,20 @@ static void *coalesce(void *bp)
   {
     PUT(HDRP(PREV_BLKP(bp)), PACK((currsize + prevsize), 0));
     PUT(FTRP(bp), PACK((currsize + prevsize), 0));
+    bp = PREV_BLKP(bp);
   }
   //Iff both, change header of prev, footer of next
   else
   {
-    PUT(FTRP(NEXT_BLKP(bp)), PACK((currsize + nextsize + prevsize), 0));
-    PUT(HDRP(PREV_BLKP(bp)), PACK((currsize + nextsize + prevsize), 0));
+    size_t headfoot = PACK((currsize + nextsize + prevsize), 0);
+    PUT(FTRP(NEXT_BLKP(bp)), headfoot);
+    PUT(HDRP(PREV_BLKP(bp)), headfoot);
+    bp = PREV_BLKP(bp);
+  }
+  //if rover pointer is between the two blocks, move it to the first
+  if(bp < rp && rp < NEXT_BLKP(bp))
+  {
+    rp = bp;
   }
   return bp;
 
