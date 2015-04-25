@@ -140,15 +140,32 @@ int mm_init(void)
   //
   // You need to provide this
   //
+  //initialize heap
+  heap_listp = mem_sbrk(4*WSIZE);
+  //error handling
+  if(heap_listp == -1)
+  {
+    printf("MSBRK threw an error \n");
+    return -1;
+  }  
+  //padding block
+  PUT(heap_listp, 0);
+  //Prologue Header
+  //8 = size of header + size of footer
+  //0 = not allocated
+  PUT(heap_listp + (1*WSIZE), PACK(8, 1));
+  //Prologue footer
+  //8 = size of header + size of footer
+  //0 = not allocated
+  PUT(heap_listp + (2*WSIZE), PACK(8, 1));
+  //Epilogue header
+  PUT(heap_listp + (3*WSIZE), PACK(0, 1));
+
+  heap_listp += (2*WSIZE);
+
+  //extend the heap!
+  extend_heap(CHUNKSIZE/WSIZE);
   return 0;
-  //
-  // Initialize a pointer to the heap with mem_sbrk(4*W_SIZE)
-  // Put a byte of padding there.
-  // Put the Prologue header one word after the head
-  // Put the Prologue footer one word after that.
-  // Put the epilogue header last (no epilogue footer)
-  //
-  // extendheap!
 }
 
 
@@ -160,11 +177,29 @@ static void *extend_heap(size_t words)
   //
   // You need to provide this
   //
-  return NULL;
   //Extend heap by words (check first to make sure multiple of two)
+  if(words%2 == 1)
+  {
+    words++;
+  }
+
   //Use mem_sbrk(desired_size) to get pointer to something.
-  //Put prologue & epilogue
-  //Coalesce.
+  char* bptr = mem_sbrk(words*WSIZE);
+
+  //error handling
+  if(bptr == -1)
+  {
+    return -1;
+  }
+
+  //make block header
+  PUT(HDRP(bptr), PACK(words, 0));
+  //make block footer
+  PUT(FTRP(bptr), PACK(words, 0));
+  //make epilogue
+  PUT(HDRP(NEXT_BLKP(bptr)), PACK(0, 1));
+  //coalesce
+  return coalesce(bptr);
 }
 
 
@@ -175,9 +210,15 @@ static void *extend_heap(size_t words)
 //
 static void *find_fit(size_t asize)
 {
-  return NULL; /* no fit */
   //go through from start of heap to end of heap, end when find
   //unallocated block of size >= asize
+  for(char* roverptr = heap_listp; GET_SIZE(roverptr) > 0; roverptr = NEXT_BLKP(roverptr))
+  {
+    if(GETSIZE(roverptr) >= asize && GET_ALLOC(roverptr) == 0) 
+      return roverptr;
+  }
+  return NULL; /* no fit */
+
 }
 
 // 
@@ -188,7 +229,16 @@ void mm_free(void *bp)
   //
   // You need to provide this
   //
+  //first check if there is any memory free up
+  if(heap_listp == 0)
+  {
+    printf("OH SHIT! NOT INITIALIZED!\n");
+    mm_init();
+  }
   //put a new footer and ptr without allocated bits at hdrp and ftrp
+  PUT(HDRP(GETSIZE(bp)), 0);
+  PUT(FTRP(GETSIZE(bp)), 0);
+  coalesce(bp);
 }
 
 //
@@ -196,23 +246,62 @@ void mm_free(void *bp)
 //
 static void *coalesce(void *bp) 
 {
-  return bp;
   //get the last previous and next blocks.
+  int pb = GET_ALLOC(PREV_BLKP(bp));
+  int nb = GET_ALLOC(NEXT_BLKP(bp));
+  int currsize = GET_SIZE(bp);
+  int nextsize = GET_SIZE(NEXT_BLKP(bp));
+  int prevsize = GET_SIZE(PREV_BLKP(bp));
   //If both are allocated do nothing.
+  if(pb && nb);
   //Iff next is unallocated, change header of current and footer of next,
+  else if(pb && !nb)
+  {
+    PUT(FTRP(NEXT_BLKP(bp)), PACK((currsize + nextsize), 0));
+    PUT(HDRP(bp), PACK((currsize + nextsize), 0));
+  }
   //Iff next is unallocated change header of prev and footer of current to size of current block + prev block 
+  else if(!pb && nb)
+  {
+    PUT(HDRP(PREV_BLKP(bp)), PACK((currsize + prevsize), 0));
+    PUT(FTRP(bp), PACK((currsize + prevsize), 0));
+  }
   //Iff both, change header of prev, footer of next
+  else
+  {
+    PUT(FTRP(NEXT_BLKP(bp)), PACK((currsize + nextsize + prevsize), 0));
+    PUT(HDRP(PREV_BLKP(bp)), PACK((currsize + nextsize + prevsize), 0));
+  }
 }
 
 
 //
-// mm_malloc - Allocate a block with at least size bytes of payload 
+// mm_malloc - Allocate a block with at least bytes of payload 
 //
 void *mm_malloc(size_t size) 
 {
   //
   // You need to provide this
   //
+  if(size%2 == 1)
+    size++;
+  
+  size += DSIZE; 
+
+  char* location = find_fit(size);
+  if(location == NULL)
+  {
+    printf("YOU'RE SCREWED! HEAP EXTENDING....");
+    extendheap(size/WSIZE);
+    location = findfit(size);
+    if(location == NULL)
+    {
+      printf("YOU'RE ACTULLY FUCKED NOW...");
+    }
+  }
+
+  place(location, size);
+
   return NULL;
   //adjust size to be aligned plus + size of the header/ftr (SIZE_T_SIZE)
   //find fit for size, placing it if found.
@@ -230,6 +319,19 @@ static void place(void *bp, size_t asize)
 {
   //if the block at bp is 'too big' split it into two blocks, assign the extra to be unallocated.
   //otherwise, just adjust bp's header and footer
+  int initialsize = GETSIZE(HDRP(bp));
+  if(initialsize > asize + 2*DSIZE)
+  {
+    PUT(HDRP(bp), PACK(asize, 1));
+    PUT(FTRP(bp), PACK(asize, 1));
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(initialsize - asize, 0));
+    PUT(FTRP(NEXT_BLKP(bp)), PACK(initialsize - asize, 0));
+  }
+  else
+  {
+    PUT(HDRP(bp), PACK(initialsize, 1));
+    PUT(FTRP(bp), PACK(initialsize, 1));
+  }
 }
 
 
