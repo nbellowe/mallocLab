@@ -147,7 +147,7 @@ int mm_init(void)
   {
     printf("MSBRK threw an error \n");
     return -1;
-  }  
+  }
   //padding block
   PUT(heap_listp, 0);
   //Prologue Header
@@ -210,11 +210,12 @@ static void *extend_heap(size_t words)
 //
 static void *find_fit(size_t asize)
 {
+  char* roverptr;
   //go through from start of heap to end of heap, end when find
   //unallocated block of size >= asize
-  for(char* roverptr = heap_listp; GET_SIZE(roverptr) > 0; roverptr = NEXT_BLKP(roverptr))
+  for(roverptr = heap_listp; GET_SIZE(roverptr) > 0; roverptr = NEXT_BLKP(roverptr))
   {
-    if(GETSIZE(roverptr) >= asize && GET_ALLOC(roverptr) == 0) 
+    if(GET_SIZE(roverptr) >= asize && GET_ALLOC(roverptr) == 0) 
       return roverptr;
   }
   return NULL; /* no fit */
@@ -236,8 +237,8 @@ void mm_free(void *bp)
     mm_init();
   }
   //put a new footer and ptr without allocated bits at hdrp and ftrp
-  PUT(HDRP(GETSIZE(bp)), 0);
-  PUT(FTRP(GETSIZE(bp)), 0);
+  PUT(HDRP(bp), PACK(GET_SIZE(bp), 0));
+  PUT(FTRP(bp), PACK(GET_SIZE(bp), 0));
   coalesce(bp);
 }
 
@@ -272,6 +273,7 @@ static void *coalesce(void *bp)
     PUT(FTRP(NEXT_BLKP(bp)), PACK((currsize + nextsize + prevsize), 0));
     PUT(HDRP(PREV_BLKP(bp)), PACK((currsize + nextsize + prevsize), 0));
   }
+  return bp;
 }
 
 
@@ -292,8 +294,8 @@ void *mm_malloc(size_t size)
   if(location == NULL)
   {
     printf("YOU'RE SCREWED! HEAP EXTENDING....");
-    extendheap(size/WSIZE);
-    location = findfit(size);
+    extend_heap(size/WSIZE);
+    location = find_fit(size);
     if(location == NULL)
     {
       printf("YOU'RE ACTULLY FUCKED NOW...");
@@ -301,8 +303,7 @@ void *mm_malloc(size_t size)
   }
 
   place(location, size);
-
-  return NULL;
+  return location;
   //adjust size to be aligned plus + size of the header/ftr (SIZE_T_SIZE)
   //find fit for size, placing it if found.
   //If not found, extendheap to be bigger, then place.
@@ -319,7 +320,7 @@ static void place(void *bp, size_t asize)
 {
   //if the block at bp is 'too big' split it into two blocks, assign the extra to be unallocated.
   //otherwise, just adjust bp's header and footer
-  int initialsize = GETSIZE(HDRP(bp));
+  int initialsize = GET_SIZE(HDRP(bp));
   if(initialsize > asize + 2*DSIZE)
   {
     PUT(HDRP(bp), PACK(asize, 1));
