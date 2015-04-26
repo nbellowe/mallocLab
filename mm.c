@@ -122,7 +122,7 @@ static inline void* PREV_BLKP(void *bp){
 
 static char *heap_listp;  /* pointer to first block */
 
-static char* rp;
+static void* rp;
 
 //
 // function prototypes for internal helper routines
@@ -210,7 +210,7 @@ static void *extend_heap(size_t words)
 //
 static void *find_fit(size_t asize)
 {
-  char* startpoint = rp;
+  void* startpoint = rp;
   //go through from start of heap to end of heap, end when find
   //unallocated block of size >= asize
   for(; GET_SIZE(HDRP(rp)) > 0; rp = NEXT_BLKP(rp))
@@ -219,7 +219,7 @@ static void *find_fit(size_t asize)
     size_t size = header & ~7;
     char alloc = header & 1;
     if( size >= asize && !alloc)
-      return rp;  
+      return rp;
   }
   rp = heap_listp;
   for(; rp < startpoint; rp = NEXT_BLKP(rp))
@@ -228,8 +228,8 @@ static void *find_fit(size_t asize)
     size_t size = header & ~7;
     char alloc = header & 1;
     if( size >= asize && !alloc)
-      return rp;  
- 
+      return rp;
+
   }
   return NULL; /* no fit */
 
@@ -243,12 +243,6 @@ void mm_free(void *bp)
   //
   // You need to provide this
   //
-  //first check if there is any memory free up
-  if(heap_listp == 0)
-  {
-    printf("OH SHIT! NOT INITIALIZED!\n");
-    mm_init();
-  }
   //put a new footer and ptr without allocated bits at hdrp and ftrp
   PUT(HDRP(bp), PACK(GET_SIZE(HDRP(bp)), 0));
   PUT(FTRP(bp), PACK(GET_SIZE(HDRP(bp)), 0));
@@ -306,19 +300,11 @@ void *mm_malloc(size_t size)
   if (size <= DSIZE) size = 2*DSIZE; //minimum size
   else {
       size = DSIZE * ((size + (DSIZE) + (DSIZE-1)) / DSIZE);
-      /*int two = (size % 4) != 0 ? size + DSIZE : DSIZE * ((size + (DSIZE) + (DSIZE-1)) / DSIZE);
-      if( one != two) {
-          printf("not equal: size %d, first %d, second %d\n", size, one, two);
-      }
-      else{
-          printf(" equal size %d\n", size);
-      }
-      size = one;*/
   }
   char* location = find_fit(size);
   if(location == NULL)
   {
-    extend_heap(size/WSIZE);
+    extend_heap(MAX(size/WSIZE, CHUNKSIZE));
     location = find_fit(size);
     if(location == NULL)
       printf("Can't find location even after extending");
